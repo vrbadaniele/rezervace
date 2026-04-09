@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Třídní schůzky</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:system-ui,sans-serif;background:#f5f4f0;color:#1a1a1a}
+.app{padding:1.5rem 1rem;max-width:680px;margin:0 auto}
+.header{text-align:center;margin-bottom:2rem;padding-bottom:1.5rem;border-bottom:1px solid #e0ddd6}
+.header h1{font-size:24px;font-weight:500}
+.header p{font-size:14px;color:#666;margin-top:4px}
+.section-title{font-size:12px;font-weight:500;color:#888;letter-spacing:.06em;text-transform:uppercase;margin-bottom:12px}
+.slot-grid{display:grid;gap:10px;margin-bottom:1.5rem}
+.slot-card{background:#fff;border:1px solid #e0ddd6;border-radius:12px;padding:1rem 1.25rem;display:flex;align-items:center;justify-content:space-between;cursor:pointer;transition:border-color .15s}
+.slot-card:hover:not(.taken){border-color:#4a90d9}
+.slot-card.taken{opacity:.7;cursor:default;background:#fafaf8}
+.slot-left{display:flex;flex-direction:column;gap:2px}
+.slot-date{font-size:15px;font-weight:500}
+.slot-note{font-size:13px;color:#888}
+.badge{font-size:12px;padding:4px 10px;border-radius:8px;font-weight:500}
+.badge-free{background:#eaf3de;color:#3b6d11}
+.badge-taken{background:#fcebeb;color:#a32d2d}
+.reg-panel{background:#f5f4f0;border:1px solid #ccc;border-radius:12px;padding:1.25rem;margin-top:-4px;margin-bottom:10px}
+.reg-panel h3{font-size:15px;font-weight:500;margin-bottom:1rem}
+.form-row{margin-bottom:12px}
+.form-row label{display:block;font-size:13px;color:#666;margin-bottom:4px}
+.form-row input{width:100%;border:1px solid #ccc;border-radius:8px;padding:8px 12px;font-size:14px;background:#fff;outline:none}
+.form-row input:focus{border-color:#4a90d9}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.btn-row{display:flex;gap:8px;margin-top:1rem}
+.btn-primary{background:#1a1a1a;color:#fff;border:none;padding:8px 16px;border-radius:8px;font-size:14px;cursor:pointer;font-weight:500}
+.btn-primary:hover{opacity:.85}
+.btn-secondary{background:transparent;border:1px solid #ccc;color:#666;padding:8px 16px;border-radius:8px;font-size:14px;cursor:pointer}
+.btn-danger{background:transparent;border:1px solid #f0a0a0;color:#a32d2d;padding:6px 12px;border-radius:8px;font-size:13px;cursor:pointer}
+.admin-panel{margin-top:1.5rem;border-top:1px solid #e0ddd6;padding-top:1.5rem}
+.add-form{background:#f5f4f0;border-radius:12px;padding:1.25rem;margin-bottom:1.5rem}
+.reg-info{font-size:13px;color:#666;margin-top:6px}
+.reg-name{font-weight:500;color:#1a1a1a}
+.empty{text-align:center;padding:2rem;color:#aaa;font-size:14px}
+.top-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}
+.nav-btn{font-size:13px;color:#666;cursor:pointer;background:none;border:1px solid #ddd;padding:5px 12px;border-radius:8px}
+.nav-btn:hover{background:#f0ede8}
+.login-box{max-width:320px;margin:2rem auto;background:#fff;border:1px solid #e0ddd6;border-radius:12px;padding:1.5rem}
+.login-box h2{font-size:18px;font-weight:500;margin-bottom:1rem}
+.success-msg{background:#eaf3de;color:#3b6d11;padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:1rem}
+.error-msg{background:#fcebeb;color:#a32d2d;padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:1rem}
+.settings-section{margin-top:1.5rem;border-top:1px solid #e0ddd6;padding-top:1.5rem}
+.admin-slot{display:flex;align-items:flex-start;justify-content:space-between;background:#fff;border:1px solid #e0ddd6;border-radius:8px;padding:.75rem 1rem;margin-bottom:8px;gap:8px}
+</style>
+</head>
+<body>
+<div class="app" id="root"><p class="empty">Nacitam terminy...</p></div>
+<script>
+var API = 'https://script.google.com/macros/s/AKfycbzkoRpyksCVf0EX_zhkYR-gYVnszkgprhYJABfkQjTRSG5nK90RrpHcjkiRR0ElV_xm/exec';
+
+var state = {
+  view: 'parent', adminLoggedIn: false,
+  slots: [], config: { title: 'Tridni schuzky', password: 'ucitel123' },
+  openSlotId: null,
+  regForm: { jmeno:'', dite:'', email:'', telefon:'' },
+  adminForm: { datum:'', cas:'', poznamka:'' },
+  msg: null
+};
+
+function uid() { return Math.random().toString(36).slice(2,10); }
+
+function fmtDate(d, t) {
+  if (!d) return '';
+  try {
+    var dt = new Date(d + 'T' + (t || '00:00'));
+    return dt.toLocaleDateString('cs-CZ', { weekday:'long', day:'numeric', month:'long' }) + (t ? ', ' + t : '');
+  } catch(e) { return d + ' ' + t; }
+}
+
+function call(params, cb) {
+  var url = API + '?nocache=' + Date.now();
+  for (var k in params) {
+    url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k] || '');
+  }
+  var cbName = 'jsonpcb_' + Math.random().toString(36).slice(2);
+  url += '&callback=' + cbName;
+  var script = document.createElement('script');
+  window[cbName] = function(data) {
+    delete window[cbName];
+    if (script.parentNode) script.parentNode.removeChild(script);
+    if (cb) cb(data);
+  };
+  script.onerror = function() {
+    delete window[cbName];
+    if (script.parentNode) script.parentNode.removeChild(script);
+    if (cb) cb(null);
+  };
+  script.src = url;
+  document.head.appendChild(script);
+}
+
+function loadData() {
+  call({ action: 'load' }, function(d) {
+    if (d && d.slots) {
+      state.slots = d.slots;
+      if (d.config) {
+        if (d.config.title) state.config.title = d.config.title;
+        if (d.config.password) state.config.password = d.config.password;
+      }
+    }
+    render();
+  });
+}
+
+function showMsg(text, type) {
+  state.msg = { text: text, type: type };
+  render();
+  setTimeout(function() { state.msg = null; render(); }, 4000);
+}
+
+function registerSlot(slotId) {
+  var f = state.regForm;
+  if (!f.jmeno.trim()) { showMsg('Zadejte prosim jmeno.', 'error'); return; }
+  var slot = null;
+  for (var i = 0; i < state.slots.length; i++) {
+    if (state.slots[i].id === slotId) { slot = state.slots[i]; break; }
+  }
+  if (!slot || slot.taken) return;
+  slot.taken = true;
+  slot.reg = { jmeno: f.jmeno.trim(), dite: f.dite.trim(), email: f.email.trim(), telefon: f.telefon.trim() };
+  state.openSlotId = null;
+  state.regForm = { jmeno:'', dite:'', email:'', telefon:'' };
+  render();
+  call({
+    action: 'registerSlot', id: slotId, termin: fmtDate(slot.datum, slot.cas),
+    jmeno: slot.reg.jmeno, dite: slot.reg.dite, email: slot.reg.email, telefon: slot.reg.telefon
+  }, function() { showMsg('Termin byl uspesne rezervovan!', 'success'); });
+}
+
+function addSlot() {
+  var f = state.adminForm;
+  if (!f.datum || !f.cas) { showMsg('Vyplnte datum a cas.', 'error'); return; }
+  var slot = { id: uid(), datum: f.datum, cas: f.cas, poznamka: f.poznamka.trim(), taken: false, reg: null };
+  state.slots.push(slot);
+  state.slots.sort(function(a,b) { return (a.datum+a.cas).localeCompare(b.datum+b.cas); });
+  state.adminForm = { datum:'', cas:'', poznamka:'' };
+  render();
+  call({ action: 'addSlot', id: slot.id, datum: slot.datum, cas: slot.cas, poznamka: slot.poznamka }, null);
+}
+
+function deleteSlot(id) {
+  state.slots = state.slots.filter(function(s) { return s.id !== id; });
+  render();
+  call({ action: 'deleteSlot', id: id }, null);
+}
+
+function tryLogin(pw) {
+  if (pw === state.config.password) { state.adminLoggedIn = true; render(); }
+  else showMsg('Nespravne heslo.', 'error');
+}
+
+function saveConfig(title, pw) {
+  if (title) state.config.title = title;
+  if (pw) state.config.password = pw;
+  call({ action: 'saveConfig', title: state.config.title, password: state.config.password }, function() {
+    showMsg('Nastaveni ulozeno.', 'success');
+  });
+}
+
+function render() {
+  var root = document.getElementById('root');
+  var msg = state.msg ? '<div class="' + (state.msg.type === 'error' ? 'error-msg' : 'success-msg') + '">' + state.msg.text + '</div>' : '';
+
+  if (state.view === 'parent') {
+    var html = '<div class="top-nav"><span></span><button class="nav-btn" onclick="state.view=\'admin\';state.adminLoggedIn=false;render()">Prihlaseni ucitele</button></div>';
+    html += '<div class="header"><h1>' + state.config.title + '</h1><p>Kliknete na volny termin pro rezervaci</p></div>' + msg;
+    if (state.slots.length === 0) {
+      html += '<p class="empty">Zatim nejsou vypsany zadne terminy.</p>';
+    } else {
+      html += '<div class="slot-grid">';
+      for (var i = 0; i < state.slots.length; i++) {
+        var s = state.slots[i];
+        var isOpen = state.openSlotId === s.id;
+        html += '<div class="slot-card ' + (s.taken ? 'taken' : '') + '" onclick="' + (s.taken ? '' : 'state.openSlotId=state.openSlotId===\'' + s.id + '\'?null:\'' + s.id + '\';render()') + '">';
+        html += '<div class="slot-left"><span class="slot-date">' + fmtDate(s.datum, s.cas) + '</span>';
+        if (s.poznamka) html += '<span class="slot-note">' + s.poznamka + '</span>';
+        html += '</div><span class="badge ' + (s.taken ? 'badge-taken' : 'badge-free') + '">' + (s.taken ? 'Obsazeno' : 'Volny termin') + '</span></div>';
+        if (isOpen && !s.taken) {
+          html += '<div class="reg-panel"><h3>Registrace - ' + fmtDate(s.datum, s.cas) + '</h3>';
+          html += '<div class="row2">';
+          html += '<div class="form-row"><label>Vase jmeno *</label><input type="text" value="' + state.regForm.jmeno + '" oninput="state.regForm.jmeno=this.value" placeholder="Jana Novakova"></div>';
+          html += '<div class="form-row"><label>Jmeno ditete</label><input type="text" value="' + state.regForm.dite + '" oninput="state.regForm.dite=this.value" placeholder="Marek Novak"></div>';
+          html += '</div><div class="row2">';
+          html += '<div class="form-row"><label>E-mail</label><input type="email" value="' + state.regForm.email + '" oninput="state.regForm.email=this.value" placeholder="jana@email.cz"></div>';
+          html += '<div class="form-row"><label>Telefon</label><input type="tel" value="' + state.regForm.telefon + '" oninput="state.regForm.telefon=this.value" placeholder="+420 777 000 000"></div>';
+          html += '</div><div class="btn-row">';
+          html += '<button class="btn-primary" onclick="registerSlot(\'' + s.id + '\')">Potvrdit rezervaci</button>';
+          html += '<button class="btn-secondary" onclick="state.openSlotId=null;render()">Zrusit</button>';
+          html += '</div></div>';
+        }
+      }
+      html += '</div>';
+    }
+    root.innerHTML = html;
+    return;
+  }
+
+  if (state.view === 'admin' && !state.adminLoggedIn) {
+    root.innerHTML = '<div class="top-nav"><button class="nav-btn" onclick="state.view=\'parent\';render()">&larr; Zpet</button></div>' + msg +
+      '<div class="login-box"><h2>Prihlaseni ucitele</h2>' +
+      '<div class="form-row"><label>Heslo</label><input type="password" id="pw-input" onkeydown="if(event.key===\'Enter\')tryLogin(this.value)" placeholder="Zadejte heslo"></div>' +
+      '<div class="btn-row"><button class="btn-primary" onclick="tryLogin(document.getElementById(\'pw-input\').value)">Prihlasit se</button></div></div>';
+    return;
+  }
+
+  var slotList = '';
+  for (var i = 0; i < state.slots.length; i++) {
+    var s = state.slots[i];
+    slotList += '<div class="admin-slot"><div>';
+    slotList += '<div style="font-size:14px;font-weight:500">' + fmtDate(s.datum, s.cas) + '</div>';
+    if (s.poznamka) slotList += '<div style="font-size:12px;color:#888">' + s.poznamka + '</div>';
+    if (s.taken && s.reg) {
+      slotList += '<div class="reg-info"><span class="reg-name">' + s.reg.jmeno + '</span>';
+      if (s.reg.dite) slotList += ' &middot; ' + s.reg.dite;
+      if (s.reg.email) slotList += ' &middot; ' + s.reg.email;
+      if (s.reg.telefon) slotList += ' &middot; ' + s.reg.telefon;
+      slotList += '</div>';
+    }
+    slotList += '</div><div style="display:flex;gap:8px;align-items:center;flex-shrink:0">';
+    slotList += '<span class="badge ' + (s.taken ? 'badge-taken' : 'badge-free') + '">' + (s.taken ? 'Obsazeno' : 'Volny') + '</span>';
+    slotList += '<button class="btn-danger" onclick="deleteSlot(\'' + s.id + '\')">Smazat</button>';
+    slotList += '</div></div>';
+  }
+  if (!slotList) slotList = '<p class="empty">Zatim zadne terminy.</p>';
+
+  root.innerHTML = '<div class="top-nav">' +
+    '<button class="nav-btn" onclick="state.view=\'parent\';render()">&larr; Pohled rodice</button>' +
+    '<button class="nav-btn" onclick="state.adminLoggedIn=false;state.view=\'parent\';render()">Odhlasit</button></div>' +
+    '<div class="header"><h1>Sprava terminu</h1><p>' + state.config.title + '</p></div>' + msg +
+    '<div class="admin-panel"><div class="section-title">Pridat termin</div><div class="add-form"><div class="row2">' +
+    '<div class="form-row"><label>Datum</label><input type="date" value="' + state.adminForm.datum + '" onchange="state.adminForm.datum=this.value"></div>' +
+    '<div class="form-row"><label>Cas</label><input type="time" value="' + state.adminForm.cas + '" onchange="state.adminForm.cas=this.value"></div></div>' +
+    '<div class="form-row"><label>Poznamka (volitelne)</label><input type="text" value="' + state.adminForm.poznamka + '" oninput="state.adminForm.poznamka=this.value" placeholder="napr. Mistnost c. 12"></div>' +
+    '<button class="btn-primary" onclick="addSlot()">Pridat termin</button></div>' +
+    '<div class="section-title">Vypsane terminy</div>' + slotList +
+    '<div class="settings-section"><div class="section-title">Nastaveni</div>' +
+    '<div class="form-row"><label>Nazev akce</label><input type="text" id="cfg-title" value="' + state.config.title + '"></div>' +
+    '<div class="form-row"><label>Nove heslo</label><input type="password" id="cfg-pw" placeholder="Ponechte prazdne"></div>' +
+    '<div class="btn-row" style="margin-top:12px"><button class="btn-primary" onclick="saveConfig(document.getElementById(\'cfg-title\').value,document.getElementById(\'cfg-pw\').value)">Ulozit nastaveni</button></div>' +
+    '</div></div>';
+}
+
+loadData();
+</script>
+</body>
+</html>
