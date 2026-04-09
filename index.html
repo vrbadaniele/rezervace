@@ -74,7 +74,8 @@ function fmtDate(d, t) {
   } catch(e) { return d + ' ' + t; }
 }
 
-function call(params, cb) {
+function call(params, cb, attempt) {
+  attempt = attempt || 1;
   var cbName = 'jsonpcb_' + Math.random().toString(36).slice(2);
   var url = API + '?nocache=' + Date.now() + '&callback=' + cbName;
   for (var k in params) {
@@ -94,16 +95,24 @@ function call(params, cb) {
     done = true;
     delete window[cbName];
     if (script.parentNode) script.parentNode.removeChild(script);
-    if (cb) cb(null);
+    if (attempt < 3) {
+      setTimeout(function() { call(params, cb, attempt + 1); }, 1000);
+    } else {
+      if (cb) cb(null);
+    }
   };
   setTimeout(function() {
     if (!done) {
       done = true;
       delete window[cbName];
       if (script.parentNode) script.parentNode.removeChild(script);
-      if (cb) cb(null);
+      if (attempt < 3) {
+        setTimeout(function() { call(params, cb, attempt + 1); }, 1000);
+      } else {
+        if (cb) cb(null);
+      }
     }
-  }, 10000);
+  }, 8000);
   script.src = url;
   document.head.appendChild(script);
 }
@@ -116,8 +125,10 @@ function loadData() {
         if (d.config.title) state.config.title = d.config.title;
         if (d.config.password) state.config.password = d.config.password;
       }
+      render();
+    } else {
+      setTimeout(loadData, 3000);
     }
-    render();
   });
 }
 
