@@ -48,10 +48,11 @@ body{font-family:system-ui,sans-serif;background:#f5f4f0;color:#1a1a1a}
 .error-msg{background:#fcebeb;color:#a32d2d;padding:10px 14px;border-radius:8px;font-size:14px;margin-bottom:1rem}
 .settings-section{margin-top:1.5rem;border-top:1px solid #e0ddd6;padding-top:1.5rem}
 .admin-slot{display:flex;align-items:flex-start;justify-content:space-between;background:#fff;border:1px solid #e0ddd6;border-radius:8px;padding:.75rem 1rem;margin-bottom:8px;gap:8px}
+.loading{text-align:center;padding:2rem;color:#aaa;font-size:14px}
 </style>
 </head>
 <body>
-<div class="app" id="root"><p class="empty">Nacitam terminy...</p></div>
+<div class="app" id="root"><p class="loading">Nacitam terminy...</p></div>
 <script>
 var API = 'https://script.google.com/macros/s/AKfycbzkoRpyksCVf0EX_zhkYR-gYVnszkgprhYJABfkQjTRSG5nK90RrpHcjkiRR0ElV_xm/exec';
 
@@ -83,6 +84,15 @@ function call(params, cb, attempt) {
   }
   var script = document.createElement('script');
   var done = false;
+
+  function retry() {
+    if (attempt < 4) {
+      setTimeout(function() { call(params, cb, attempt + 1); }, 1500);
+    } else {
+      if (cb) cb(null);
+    }
+  }
+
   window[cbName] = function(data) {
     if (done) return;
     done = true;
@@ -90,29 +100,24 @@ function call(params, cb, attempt) {
     if (script.parentNode) script.parentNode.removeChild(script);
     if (cb) cb(data);
   };
+
   script.onerror = function() {
     if (done) return;
     done = true;
     delete window[cbName];
     if (script.parentNode) script.parentNode.removeChild(script);
-    if (attempt < 3) {
-      setTimeout(function() { call(params, cb, attempt + 1); }, 1000);
-    } else {
-      if (cb) cb(null);
-    }
+    retry();
   };
+
   setTimeout(function() {
     if (!done) {
       done = true;
       delete window[cbName];
       if (script.parentNode) script.parentNode.removeChild(script);
-      if (attempt < 3) {
-        setTimeout(function() { call(params, cb, attempt + 1); }, 1000);
-      } else {
-        if (cb) cb(null);
-      }
+      retry();
     }
   }, 8000);
+
   script.src = url;
   document.head.appendChild(script);
 }
@@ -127,6 +132,7 @@ function loadData() {
       }
       render();
     } else {
+      document.getElementById('root').innerHTML = '<p class="loading">Pripojuji se, zkousim znovu...</p>';
       setTimeout(loadData, 3000);
     }
   });
