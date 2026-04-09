@@ -79,21 +79,27 @@ function call(params, cb) {
   for (var k in params) {
     url += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(params[k] || '');
   }
-  var cbName = 'jsonpcb_' + Math.random().toString(36).slice(2);
-  url += '&callback=' + cbName;
-  var script = document.createElement('script');
-  window[cbName] = function(data) {
-    delete window[cbName];
-    if (script.parentNode) script.parentNode.removeChild(script);
-    if (cb) cb(data);
-  };
-  script.onerror = function() {
-    delete window[cbName];
-    if (script.parentNode) script.parentNode.removeChild(script);
-    if (cb) cb(null);
-  };
-  script.src = url;
-  document.head.appendChild(script);
+
+  fetch(url, { redirect: 'follow' })
+    .then(function(r) { return r.json(); })
+    .then(function(data) { if (cb) cb(data); })
+    .catch(function() {
+      var cbName = 'jsonpcb_' + Math.random().toString(36).slice(2);
+      var urlWithCb = url + '&callback=' + cbName;
+      var script = document.createElement('script');
+      window[cbName] = function(data) {
+        delete window[cbName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+        if (cb) cb(data);
+      };
+      script.onerror = function() {
+        delete window[cbName];
+        if (script.parentNode) script.parentNode.removeChild(script);
+        if (cb) cb(null);
+      };
+      script.src = urlWithCb;
+      document.head.appendChild(script);
+    });
 }
 
 function loadData() {
